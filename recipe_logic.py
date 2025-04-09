@@ -58,9 +58,15 @@ def get_macro(food_name, macro, selected_foods):
     return 0
 
 def recipe_is_makeable(recipe_ingredients, selected_foods, threshold=70):
-    available = [f["Food"] for f in selected_foods]
+    if not selected_foods:
+        return False
+
+    available = [f["Food"] for f in selected_foods if "Food" in f]
     for ingredient in recipe_ingredients:
-        match, score = process.extractOne(ingredient, available)
+        result = process.extractOne(ingredient, available)
+        if not result:
+            return False
+        match, score = result
         if score < threshold:
             return False
     return True
