@@ -1,10 +1,19 @@
 from fuzzywuzzy import process
 import pandas as pd
 import requests
+from pyomo.environ import *
 
 API_KEY = "AwQOO35hr05OR3A6DtOqM1IO6LERLFppuVdpjY2f"
 
-# Autocomplete
+def search_food(query):
+    url = "https://api.nal.usda.gov/fdc/v1/foods/search"
+    params = {"api_key": API_KEY, "query": query, "dataType": ["Foundation"], "pageSize": 1}
+    r = requests.get(url, params=params).json()
+    if not r.get("foods"):
+        return None
+    food = r["foods"][0]
+    return food["fdcId"], food["description"]
+
 def search_usda_suggestions(query, limit=15):
     url = "https://api.nal.usda.gov/fdc/v1/foods/search"
     params = {
@@ -20,15 +29,6 @@ def search_usda_suggestions(query, limit=15):
         return [match[0] for match in matches if match[1] >= 50]
     except:
         return []
-
-def search_food(query):
-    url = "https://api.nal.usda.gov/fdc/v1/foods/search"
-    params = {"api_key": API_KEY, "query": query, "dataType": ["Foundation"], "pageSize": 1}
-    r = requests.get(url, params=params).json()
-    if not r.get("foods"):
-        return None
-    food = r["foods"][0]
-    return food["fdcId"], food["description"]
 
 def get_nutrition(fdc_id):
     url = f"https://api.nal.usda.gov/fdc/v1/food/{fdc_id}"
@@ -63,23 +63,15 @@ def get_nutrition(fdc_id):
 def fuzzy_match(ingredient, selected_foods, threshold=70):
     names = [f["Food"] for f in selected_foods]
     match, score = process.extractOne(ingredient, names)
+    print(f"Matching '{ingredient}' to → '{match}' (score: {score})")
     return match if score >= threshold else None
 
-def get_macro(food_name, macro, selected_foods):
-    match = fuzzy_match(food_name, selected_foods)
-    if match:
-        for f in selected_foods:
-            if f["Food"] == match:
-                return f.get(macro, 0)
-    return 0
-
 def recipe_is_makeable(recipe_ingredients, selected_foods, threshold=70):
-    if not selected_foods:
-        return False
-    available = [f["Food"] for f in selected_foods if "Food" in f]
+    available = [f["Food"] for f in selected_foods]
     for ingredient in recipe_ingredients:
-        result = process.extractOne(ingredient, available)
-        if not result or result[1] < threshold:
+        match, score = process.extractOne(ingredient, available)
+        print(f"Matching '{ingredient}' to → '{match}' (score: {score})")
+        if score < threshold:
             return False
     return True
 
@@ -96,19 +88,21 @@ def build_recipe_macros(recipes, selected_foods):
         rows.append(m)
     return pd.DataFrame(rows)
 
-def optimize_food_via_api(foods, goal):
-    try:
-        r = requests.post("http://127.0.0.1:5001/optimize-foods", json={"foods": foods, "goal": goal})
-        return r.json() if r.status_code == 200 else None
-    except Exception as e:
-        print("Food API Error:", e)
-        return None
+def get_macro(food_name, macro, selected_foods):
+    match = fuzzy_match(food_name, selected_foods)
+    if match:
+        for f in selected_foods:
+            if f["Food"] == match:
+                return f.get(macro, 0)
+    return 0
 
 def optimize_recipe_via_api(df, goal):
     try:
         json_rows = df.to_dict(orient="records")
+        print("🔄 Sending to API:", json_rows)
         r = requests.post("http://127.0.0.1:5001/optimize-recipe", json={"df": json_rows, "goal": goal})
+        print("✅ Response from API:", r.text)
         return r.json().get("recipe") if r.status_code == 200 else None
     except Exception as e:
-        print("Recipe API Error:", e)
+        print("❌ Recipe API Error:", e)
         return None

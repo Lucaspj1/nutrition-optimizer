@@ -32,7 +32,7 @@ if suggestions:
         if fdc_id:
             macros = get_nutrition(fdc_id)
             macros["Available (g)"] = grams
-            macros["Servings"] = round(grams / 100, 2)  # 🥄 Add serving size
+            macros["Servings"] = round(grams / 100, 2)
             st.session_state.selected_foods.append(macros)
             st.success(f"✅ Added {name} ({grams}g ≈ {round(grams / 100, 2)} servings)")
         else:
@@ -61,10 +61,12 @@ if st.session_state.selected_foods and st.button("⚡ Run Optimization"):
     st.dataframe(df_macro_check[["Food", "Available (g)", "Servings", "Calories", "Protein (g)", "Carbs (g)", "Fat (g)", "Fiber (g)"]])
 
     if mode == "Optimize by Recipe":
-        makeable = {
-            name: ing for name, ing in recipes.items()
-            if recipe_is_makeable(ing, st.session_state.selected_foods)
-        }
+        makeable = {}
+        for name, ing in recipes.items():
+            if recipe_is_makeable(ing, st.session_state.selected_foods):
+                makeable[name] = ing
+            else:
+                print(f"❌ Not makeable: {name} with ingredients {ing}")
 
         if not makeable:
             st.warning("❌ No recipes can be made from selected foods.")
@@ -76,7 +78,6 @@ if st.session_state.selected_foods and st.button("⚡ Run Optimization"):
                 st.warning("❌ No optimal recipe was returned. Try adding more ingredients.")
             else:
                 st.success(f"🔥 Best Recipe: {best}")
-
                 st.subheader("📋 Ingredients")
                 for k, v in makeable[best].items():
                     st.write(f"- {k.title()}: {v}g")
@@ -84,7 +85,6 @@ if st.session_state.selected_foods and st.button("⚡ Run Optimization"):
                 row = df[df["Recipe"] == best].iloc[0]
                 st.subheader("📊 Macros")
                 st.write({col: round(row[col], 1) for col in row.index if col != "Recipe"})
-
     else:
         best_combo = optimize_food_via_api(st.session_state.selected_foods, goal)
         if best_combo:
