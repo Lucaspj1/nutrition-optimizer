@@ -106,3 +106,16 @@ def optimize_recipe_via_api(df, goal):
     except Exception as e:
         print("❌ Recipe API Error:", e)
         return None
+    
+def optimize_food_via_api(selected_foods, goal):
+    try:
+        data = {
+            "foods": selected_foods,
+            "goal": goal
+        }
+        r = requests.post("http://127.0.0.1:5001/optimize-food", json=data)
+        print("✅ Response from optimizer API:", r.text)
+        return r.json().get("result") if r.status_code == 200 else None
+    except Exception as e:
+        print("❌ Food API error:", e)
+        return None
