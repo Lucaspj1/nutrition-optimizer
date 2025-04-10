@@ -1,24 +1,23 @@
 from fuzzywuzzy import process
 import pandas as pd
 import requests
-from pyomo.environ import *
 
 API_KEY = "AwQOO35hr05OR3A6DtOqM1IO6LERLFppuVdpjY2f"
 
-# Fuzzy USDA food suggestions (live dropdown)
+# Autocomplete
 def search_usda_suggestions(query, limit=15):
     url = "https://api.nal.usda.gov/fdc/v1/foods/search"
     params = {
         "api_key": API_KEY,
         "query": query,
-        "dataType": ["Foundation"],
-        "pageSize": 50
+        "dataType": ["Survey (FNDDS)", "Foundation"],
+        "pageSize": 100
     }
     try:
         r = requests.get(url, params=params).json()
         all_foods = [food["description"] for food in r.get("foods", [])]
         matches = process.extract(query, all_foods, limit=limit)
-        return [match[0] for match in matches if match[1] >= 60]
+        return [match[0] for match in matches if match[1] >= 50]
     except:
         return []
 
@@ -97,63 +96,19 @@ def build_recipe_macros(recipes, selected_foods):
         rows.append(m)
     return pd.DataFrame(rows)
 
-def optimize_recipes_by_goal(df, goal_type):
-    model = ConcreteModel()
-    R = list(df["Recipe"])
-    model.R = Set(initialize=R)
-    model.x = Var(model.R, domain=Binary)
-    model.only_one = Constraint(expr=sum(model.x[r] for r in R) == 1)
-
-    goal_map = {
-        "maximize_protein": ("Protein", maximize),
-        "minimize_carbs": ("Carbs", minimize),
-        "minimize_calories": ("Calories", minimize),
-        "maximize_fiber": ("Fiber", maximize)
-    }
-
-    macro, sense = goal_map[goal_type]
-    model.obj = Objective(expr=sum(model.x[r] * df[df["Recipe"] == r][macro].values[0] for r in R), sense=sense)
-
-    solver = SolverFactory("cbc")
-    solver.solve(model)
-
-    selected = [r for r in R if model.x[r].value == 1]
-    return selected[0]
-
-import requests
-
 def optimize_food_via_api(foods, goal):
-    url = "http://127.0.0.1:5001/optimize"  # Change to public IP later if needed
-    payload = {"foods": foods, "goal": goal}
     try:
-        r = requests.post(url, json=payload)
+        r = requests.post("http://127.0.0.1:5001/optimize-foods", json={"foods": foods, "goal": goal})
         return r.json() if r.status_code == 200 else None
     except Exception as e:
-        print("API optimization error:", e)
+        print("Food API Error:", e)
         return None
 
-def optimize_food_quantities(foods, goal_type):
-    if not foods:
+def optimize_recipe_via_api(df, goal):
+    try:
+        json_rows = df.to_dict(orient="records")
+        r = requests.post("http://127.0.0.1:5001/optimize-recipe", json={"df": json_rows, "goal": goal})
+        return r.json().get("recipe") if r.status_code == 200 else None
+    except Exception as e:
+        print("Recipe API Error:", e)
         return None
-
-    model = ConcreteModel()
-    F = [f["Food"] for f in foods]
-    model.F = Set(initialize=F)
-    model.x = Var(model.F, domain=NonNegativeReals)
-
-    goal_map = {
-        "maximize_protein": ("Protein (g)", maximize),
-        "minimize_carbs": ("Carbs (g)", minimize),
-        "minimize_calories": ("Calories", minimize),
-        "maximize_fiber": ("Fiber (g)", maximize)
-    }
-
-    macro, sense = goal_map[goal_type]
-    model.obj = Objective(expr=sum(model.x[f] * next(item[macro] for item in foods if item["Food"] == f) / 100 for f in F), sense=sense)
-
-    model.total_weight = Constraint(expr=sum(model.x[f] for f in F) <= 500)  # 500g daily max
-
-    solver = SolverFactory("cbc")
-    solver.solve(model)
-
-    return {f: model.x[f].value for f in F if model.x[f].value > 0}

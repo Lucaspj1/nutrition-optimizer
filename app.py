@@ -1,57 +1,4 @@
-import streamlit as st
-from recipe_logic import *
-from recipes_data import recipes
-
-st.set_page_config(page_title="Nutrition Optimizer", layout="centered")
-st.title("🥗 Nutrition Optimizer")
-
-if "selected_foods" not in st.session_state:
-    st.session_state.selected_foods = []
-
-# ---------------------
-# 🔍 Search + Add Food
-# ---------------------
-st.subheader("🔍 Search and Add Foods (USDA API)")
-search_term = st.text_input("Type a food name:")
-
-selected_option = None
-if search_term:
-    options = search_usda_suggestions(search_term)
-    if options:
-        selected_option = st.selectbox("Select a food to add:", options)
-
-if selected_option and st.button("➕ Add Food"):
-    result = search_food(selected_option)
-    if result:
-        fdc_id, name = result
-        nutrition = get_nutrition(fdc_id)
-        st.session_state.selected_foods.append(nutrition)
-        st.success(f"✅ Added: {name}")
-    else:
-        st.error("Food not found.")
-
-# ---------------------
-# 📋 Display Selected
-# ---------------------
-if st.session_state.selected_foods:
-    st.subheader("🧾 Selected Foods")
-    st.table(st.session_state.selected_foods)
-
-# ---------------------
-# 🎯 Goal
-# ---------------------
-goal = st.selectbox("🎯 Choose your nutrition goal", [
-    "maximize_protein", "minimize_carbs", "minimize_calories", "maximize_fiber"
-])
-
-# ---------------------
-# ⚙️ Optimization Mode
-# ---------------------
-mode = st.radio("🧠 Choose optimization mode", ["Optimize by Recipe", "Optimize by Foods (no recipes)"])
-
-# ---------------------
 # ⚡ Run Optimization
-# ---------------------
 if st.session_state.selected_foods and st.button("⚡ Optimize Now"):
     if mode == "Optimize by Recipe":
         makeable = {
@@ -63,7 +10,7 @@ if st.session_state.selected_foods and st.button("⚡ Optimize Now"):
             st.warning("❌ No recipes can be made from selected foods.")
         else:
             df = build_recipe_macros(makeable, st.session_state.selected_foods)
-            best = optimize_recipes_by_goal(df, goal)
+            best = optimize_recipe_via_api(df, goal)
             st.success(f"🔥 Best Recipe: {best}")
 
             st.subheader("📋 Ingredients")
