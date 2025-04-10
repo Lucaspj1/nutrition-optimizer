@@ -3,7 +3,17 @@ import pandas as pd
 import requests
 from pyomo.environ import *
 
-API_KEY = "YOUR_USDA_API_KEY"  # Replace with your actual key
+API_KEY = "YOUR_USDA_API_KEY"  # Replace with your real key
+
+# 🔍 Suggestions
+def search_usda_suggestions(query, limit=10):
+    url = "https://api.nal.usda.gov/fdc/v1/foods/search"
+    params = {"api_key": API_KEY, "query": query, "dataType": ["Foundation"], "pageSize": limit}
+    try:
+        r = requests.get(url, params=params).json()
+        return [food["description"] for food in r.get("foods", [])]
+    except:
+        return []
 
 def search_food(query):
     url = "https://api.nal.usda.gov/fdc/v1/foods/search"
@@ -44,6 +54,7 @@ def get_nutrition(fdc_id):
 
     return nutrients
 
+# 🧠 Recipe Matching
 def fuzzy_match(ingredient, selected_foods, threshold=70):
     names = [f["Food"] for f in selected_foods]
     match, score = process.extractOne(ingredient, names)
@@ -60,14 +71,10 @@ def get_macro(food_name, macro, selected_foods):
 def recipe_is_makeable(recipe_ingredients, selected_foods, threshold=70):
     if not selected_foods:
         return False
-
     available = [f["Food"] for f in selected_foods if "Food" in f]
     for ingredient in recipe_ingredients:
         result = process.extractOne(ingredient, available)
-        if not result:
-            return False
-        match, score = result
-        if score < threshold:
+        if not result or result[1] < threshold:
             return False
     return True
 
@@ -84,12 +91,12 @@ def build_recipe_macros(recipes, selected_foods):
         rows.append(m)
     return pd.DataFrame(rows)
 
+# 📊 Recipe Optimizer
 def optimize_recipes_by_goal(df, goal_type):
     model = ConcreteModel()
     R = list(df["Recipe"])
     model.R = Set(initialize=R)
     model.x = Var(model.R, domain=Binary)
-
     model.only_one = Constraint(expr=sum(model.x[r] for r in R) == 1)
 
     goal_map = {
@@ -107,3 +114,30 @@ def optimize_recipes_by_goal(df, goal_type):
 
     selected = [r for r in R if model.x[r].value == 1]
     return selected[0]
+
+# 🧮 Direct Food Optimizer (No Recipes)
+def optimize_food_quantities(foods, goal_type):
+    if not foods:
+        return None
+
+    model = ConcreteModel()
+    F = [f["Food"] for f in foods]
+    model.F = Set(initialize=F)
+    model.x = Var(model.F, domain=NonNegativeReals)
+
+    goal_map = {
+        "maximize_protein": ("Protein (g)", maximize),
+        "minimize_carbs": ("Carbs (g)", minimize),
+        "minimize_calories": ("Calories", minimize),
+        "maximize_fiber": ("Fiber (g)", maximize)
+    }
+
+    macro, sense = goal_map[goal_type]
+    model.obj = Objective(expr=sum(model.x[f] * next(item[macro] for item in foods if item["Food"] == f) / 100 for f in F), sense=sense)
+
+    model.total_weight = Constraint(expr=sum(model.x[f] for f in F) <= 500)  # 500g daily cap
+
+    solver = SolverFactory("glpk", executable="/usr/bin/glpsol")
+    solver.solve(model)
+
+    return {f: model.x[f].value for f in F if model.x[f].value > 0}

@@ -5,49 +5,82 @@ from recipes_data import recipes
 st.set_page_config(page_title="Nutrition Optimizer", layout="centered")
 st.title("🥗 Nutrition Optimizer")
 
-# Search
-query = st.text_input("Search a food (from USDA API):")
+# Setup session state
 if "selected_foods" not in st.session_state:
     st.session_state.selected_foods = []
 
-if query:
-    result = search_food(query)
+# ---------------------
+# 🔍 Search + Add Food
+# ---------------------
+st.subheader("🔍 Search and Add Foods (USDA API)")
+search_term = st.text_input("Type a food name:")
+
+food_name = None
+if search_term:
+    options = search_usda_suggestions(search_term)
+    if options:
+        food_name = st.selectbox("Select a food to add:", options)
+
+if food_name and st.button("➕ Add Food"):
+    result = search_food(food_name)
     if result:
         fdc_id, name = result
         nutrition = get_nutrition(fdc_id)
         st.session_state.selected_foods.append(nutrition)
         st.success(f"✅ Added: {name}")
     else:
-        st.error("❌ Food not found.")
+        st.error("Food not found.")
 
-# View selected
+# ---------------------
+# 📋 Display Selected
+# ---------------------
 if st.session_state.selected_foods:
     st.subheader("🧾 Selected Foods")
     st.table(st.session_state.selected_foods)
 
-# Dietary goal
-goal = st.selectbox("🎯 Select your dietary goal", [
+# ---------------------
+# 🎯 Goal
+# ---------------------
+goal = st.selectbox("🎯 Choose your nutrition goal", [
     "maximize_protein", "minimize_carbs", "minimize_calories", "maximize_fiber"
 ])
 
-# Filter recipes
-makeable_recipes = {
-    name: ingredients for name, ingredients in recipes.items()
-    if recipe_is_makeable(ingredients, st.session_state.selected_foods)
-}
+# ---------------------
+# ⚙️ Optimization Mode
+# ---------------------
+mode = st.radio("🧠 Choose optimization mode", ["Optimize by Recipe", "Optimize by Foods (no recipes)"])
 
-if not makeable_recipes:
-    st.warning("❌ No recipes can be made with your selected foods.")
-else:
-    if st.button("⚡ Optimize!"):
-        df = build_recipe_macros(makeable_recipes, st.session_state.selected_foods)
-        best = optimize_recipes_by_goal(df, goal)
-        st.success(f"🔥 Best Recipe: {best}")
+# ---------------------
+# ⚡ Run Optimization
+# ---------------------
+if st.session_state.selected_foods and st.button("⚡ Optimize Now"):
+    if mode == "Optimize by Recipe":
+        makeable = {
+            name: ing for name, ing in recipes.items()
+            if recipe_is_makeable(ing, st.session_state.selected_foods)
+        }
 
-        st.subheader("📋 Ingredients")
-        for k, v in makeable_recipes[best].items():
-            st.write(f"- {k.title()}: {v}g")
+        if not makeable:
+            st.warning("❌ No recipes can be made from selected foods.")
+        else:
+            df = build_recipe_macros(makeable, st.session_state.selected_foods)
+            best = optimize_recipes_by_goal(df, goal)
+            st.success(f"🔥 Best Recipe: {best}")
 
-        row = df[df["Recipe"] == best].iloc[0]
-        st.subheader("📊 Macros")
-        st.write({col: round(row[col], 1) for col in row.index if col != "Recipe"})
+            st.subheader("📋 Ingredients")
+            for k, v in makeable[best].items():
+                st.write(f"- {k.title()}: {v}g")
+
+            row = df[df["Recipe"] == best].iloc[0]
+            st.subheader("📊 Macros")
+            st.write({col: round(row[col], 1) for col in row.index if col != "Recipe"})
+
+    else:
+        # Direct optimization of selected foods
+        best_combo = optimize_food_quantities(st.session_state.selected_foods, goal)
+        if best_combo:
+            st.success("✅ Optimal food plan generated:")
+            for food, grams in best_combo.items():
+                st.write(f"- {food.title()}: {round(grams, 1)}g")
+        else:
+            st.warning("❌ No optimal combination found.")
