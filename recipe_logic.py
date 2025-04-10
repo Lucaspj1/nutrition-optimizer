@@ -3,15 +3,22 @@ import pandas as pd
 import requests
 from pyomo.environ import *
 
-API_KEY = "YOUR_USDA_API_KEY"  # Replace with your real key
+API_KEY = "YOUR_USDA_API_KEY"  # Replace with your actual USDA key
 
-# 🔍 Suggestions
-def search_usda_suggestions(query, limit=10):
+# Fuzzy USDA food suggestions (live dropdown)
+def search_usda_suggestions(query, limit=15):
     url = "https://api.nal.usda.gov/fdc/v1/foods/search"
-    params = {"api_key": API_KEY, "query": query, "dataType": ["Foundation"], "pageSize": limit}
+    params = {
+        "api_key": API_KEY,
+        "query": query,
+        "dataType": ["Foundation"],
+        "pageSize": 50
+    }
     try:
         r = requests.get(url, params=params).json()
-        return [food["description"] for food in r.get("foods", [])]
+        all_foods = [food["description"] for food in r.get("foods", [])]
+        matches = process.extract(query, all_foods, limit=limit)
+        return [match[0] for match in matches if match[1] >= 60]
     except:
         return []
 
@@ -54,7 +61,6 @@ def get_nutrition(fdc_id):
 
     return nutrients
 
-# 🧠 Recipe Matching
 def fuzzy_match(ingredient, selected_foods, threshold=70):
     names = [f["Food"] for f in selected_foods]
     match, score = process.extractOne(ingredient, names)
@@ -91,7 +97,6 @@ def build_recipe_macros(recipes, selected_foods):
         rows.append(m)
     return pd.DataFrame(rows)
 
-# 📊 Recipe Optimizer
 def optimize_recipes_by_goal(df, goal_type):
     model = ConcreteModel()
     R = list(df["Recipe"])
@@ -115,7 +120,6 @@ def optimize_recipes_by_goal(df, goal_type):
     selected = [r for r in R if model.x[r].value == 1]
     return selected[0]
 
-# 🧮 Direct Food Optimizer (No Recipes)
 def optimize_food_quantities(foods, goal_type):
     if not foods:
         return None
@@ -135,7 +139,7 @@ def optimize_food_quantities(foods, goal_type):
     macro, sense = goal_map[goal_type]
     model.obj = Objective(expr=sum(model.x[f] * next(item[macro] for item in foods if item["Food"] == f) / 100 for f in F), sense=sense)
 
-    model.total_weight = Constraint(expr=sum(model.x[f] for f in F) <= 500)  # 500g daily cap
+    model.total_weight = Constraint(expr=sum(model.x[f] for f in F) <= 500)  # 500g daily max
 
     solver = SolverFactory("glpk", executable="/usr/bin/glpsol")
     solver.solve(model)

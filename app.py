@@ -5,7 +5,6 @@ from recipes_data import recipes
 st.set_page_config(page_title="Nutrition Optimizer", layout="centered")
 st.title("🥗 Nutrition Optimizer")
 
-# Setup session state
 if "selected_foods" not in st.session_state:
     st.session_state.selected_foods = []
 
@@ -13,16 +12,16 @@ if "selected_foods" not in st.session_state:
 # 🔍 Search + Add Food
 # ---------------------
 st.subheader("🔍 Search and Add Foods (USDA API)")
-search_term = st.text_input("Type a food name:")
+search_term = st.text_input("Type a food name (e.g. 'chicen' for chicken):")
 
-food_name = None
+selected_option = None
 if search_term:
     options = search_usda_suggestions(search_term)
     if options:
-        food_name = st.selectbox("Select a food to add:", options)
+        selected_option = st.selectbox("Select a food to add:", options)
 
-if food_name and st.button("➕ Add Food"):
-    result = search_food(food_name)
+if selected_option and st.button("➕ Add Food"):
+    result = search_food(selected_option)
     if result:
         fdc_id, name = result
         nutrition = get_nutrition(fdc_id)
@@ -76,7 +75,6 @@ if st.session_state.selected_foods and st.button("⚡ Optimize Now"):
             st.write({col: round(row[col], 1) for col in row.index if col != "Recipe"})
 
     else:
-        # Direct optimization of selected foods
         best_combo = optimize_food_quantities(st.session_state.selected_foods, goal)
         if best_combo:
             st.success("✅ Optimal food plan generated:")
