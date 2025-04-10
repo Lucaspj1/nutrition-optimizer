@@ -55,6 +55,10 @@ goal = st.selectbox("Select your dietary goal:", [
 
 # --- Run Optimization ---
 if st.session_state.selected_foods and st.button("⚡ Run Optimization"):
+    df_macro_check = pd.DataFrame(st.session_state.selected_foods)
+    st.subheader("📊 Optimization Preview")
+    st.dataframe(df_macro_check[["Food", "Available (g)", "Calories", "Protein (g)", "Carbs (g)", "Fat (g)", "Fiber (g)"]])
+
     if mode == "Optimize by Recipe":
         makeable = {
             name: ing for name, ing in recipes.items()
@@ -66,15 +70,20 @@ if st.session_state.selected_foods and st.button("⚡ Run Optimization"):
         else:
             df = build_recipe_macros(makeable, st.session_state.selected_foods)
             best = optimize_recipe_via_api(df, goal)
-            st.success(f"🔥 Best Recipe: {best}")
 
-            st.subheader("📋 Ingredients")
-            for k, v in makeable[best].items():
-                st.write(f"- {k.title()}: {v}g")
+            if best is None:
+                st.warning("❌ No optimal recipe was returned. Try adding more ingredients.")
+            else:
+                st.success(f"🔥 Best Recipe: {best}")
 
-            row = df[df["Recipe"] == best].iloc[0]
-            st.subheader("📊 Macros")
-            st.write({col: round(row[col], 1) for col in row.index if col != "Recipe"})
+                st.subheader("📋 Ingredients")
+                for k, v in makeable[best].items():
+                    st.write(f"- {k.title()}: {v}g")
+
+                row = df[df["Recipe"] == best].iloc[0]
+                st.subheader("📊 Macros")
+                st.write({col: round(row[col], 1) for col in row.index if col != "Recipe"})
+
     else:
         best_combo = optimize_food_via_api(st.session_state.selected_foods, goal)
         if best_combo:
@@ -82,4 +91,4 @@ if st.session_state.selected_foods and st.button("⚡ Run Optimization"):
             for food, grams in best_combo.items():
                 st.write(f"- {food.title()}: {round(grams, 1)}g")
         else:
-            st.warning("❌ No optimal combination found.")
+            st.warning("❌ No optimal combination found. Ensure foods contain usable nutrition data.")
