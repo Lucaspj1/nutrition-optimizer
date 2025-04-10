@@ -32,8 +32,9 @@ if suggestions:
         if fdc_id:
             macros = get_nutrition(fdc_id)
             macros["Available (g)"] = grams
+            macros["Servings"] = round(grams / 100, 2)  # 🥄 Add serving size
             st.session_state.selected_foods.append(macros)
-            st.success(f"✅ Added {name} ({grams}g)")
+            st.success(f"✅ Added {name} ({grams}g ≈ {round(grams / 100, 2)} servings)")
         else:
             st.warning("❌ Could not fetch food info.")
 
@@ -41,7 +42,7 @@ if suggestions:
 if st.session_state.selected_foods:
     st.subheader("🧾 Selected Foods")
     df_foods = pd.DataFrame(st.session_state.selected_foods)
-    st.dataframe(df_foods)
+    st.dataframe(df_foods[["Food", "Available (g)", "Servings", "Calories", "Protein (g)", "Carbs (g)", "Fat (g)", "Fiber (g)"]])
 
 # --- Optimization Settings ---
 st.header("Optimize My Nutrition")
@@ -57,7 +58,7 @@ goal = st.selectbox("Select your dietary goal:", [
 if st.session_state.selected_foods and st.button("⚡ Run Optimization"):
     df_macro_check = pd.DataFrame(st.session_state.selected_foods)
     st.subheader("📊 Optimization Preview")
-    st.dataframe(df_macro_check[["Food", "Available (g)", "Calories", "Protein (g)", "Carbs (g)", "Fat (g)", "Fiber (g)"]])
+    st.dataframe(df_macro_check[["Food", "Available (g)", "Servings", "Calories", "Protein (g)", "Carbs (g)", "Fat (g)", "Fiber (g)"]])
 
     if mode == "Optimize by Recipe":
         makeable = {
