@@ -12,7 +12,7 @@ if "selected_foods" not in st.session_state:
 # 🔍 Search + Add Food
 # ---------------------
 st.subheader("🔍 Search and Add Foods (USDA API)")
-search_term = st.text_input("Type a food name (e.g. 'chicen' for chicken):")
+search_term = st.text_input("Type a food name:")
 
 selected_option = None
 if search_term:
