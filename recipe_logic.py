@@ -10,7 +10,7 @@ def search_usda_suggestions(query, limit=15):
     params = {
         "api_key": API_KEY,
         "query": query,
-        "dataType": ["Survey (FNDDS)", "Foundation"],
+        "dataType": ["Foundation"],
         "pageSize": 100
     }
     try:
