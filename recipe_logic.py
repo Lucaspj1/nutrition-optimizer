@@ -120,6 +120,18 @@ def optimize_recipes_by_goal(df, goal_type):
     selected = [r for r in R if model.x[r].value == 1]
     return selected[0]
 
+import requests
+
+def optimize_food_via_api(foods, goal):
+    url = "http://127.0.0.1:5001/optimize"  # Change to public IP later if needed
+    payload = {"foods": foods, "goal": goal}
+    try:
+        r = requests.post(url, json=payload)
+        return r.json() if r.status_code == 200 else None
+    except Exception as e:
+        print("API optimization error:", e)
+        return None
+
 def optimize_food_quantities(foods, goal_type):
     if not foods:
         return None

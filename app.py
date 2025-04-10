@@ -75,7 +75,7 @@ if st.session_state.selected_foods and st.button("⚡ Optimize Now"):
             st.write({col: round(row[col], 1) for col in row.index if col != "Recipe"})
 
     else:
-        best_combo = optimize_food_quantities(st.session_state.selected_foods, goal)
+        best_combo = optimize_food_via_api(st.session_state.selected_foods, goal)
         if best_combo:
             st.success("✅ Optimal food plan generated:")
             for food, grams in best_combo.items():
