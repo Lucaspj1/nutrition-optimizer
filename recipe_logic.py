@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 from pyomo.environ import *
 
-API_KEY = "YOUR_USDA_API_KEY"  # Replace with your actual USDA key
+API_KEY = "AwQOO35hr05OR3A6DtOqM1IO6LERLFppuVdpjY2f"
 
 # Fuzzy USDA food suggestions (live dropdown)
 def search_usda_suggestions(query, limit=15):
