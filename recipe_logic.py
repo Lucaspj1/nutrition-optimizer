@@ -114,7 +114,7 @@ def optimize_recipes_by_goal(df, goal_type):
     macro, sense = goal_map[goal_type]
     model.obj = Objective(expr=sum(model.x[r] * df[df["Recipe"] == r][macro].values[0] for r in R), sense=sense)
 
-    solver = SolverFactory("glpk", executable="/usr/bin/glpsol")
+    solver = SolverFactory("cbc")
     solver.solve(model)
 
     selected = [r for r in R if model.x[r].value == 1]
@@ -141,7 +141,7 @@ def optimize_food_quantities(foods, goal_type):
 
     model.total_weight = Constraint(expr=sum(model.x[f] for f in F) <= 500)  # 500g daily max
 
-    solver = SolverFactory("glpk", executable="/usr/bin/glpsol")
+    solver = SolverFactory("cbc")
     solver.solve(model)
 
     return {f: model.x[f].value for f in F if model.x[f].value > 0}
