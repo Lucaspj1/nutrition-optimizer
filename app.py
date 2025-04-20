@@ -1,63 +1,57 @@
 import streamlit as st
-from recipe_logic import *
-from recipes_data import recipes
+from recipe_logic import (
+    get_nutrition, build_recipe_macros,
+    optimize_recipe_via_api, optimize_food_via_api,
+    search_usda_suggestions
+)
 import pandas as pd
 
-st.set_page_config(page_title="Nutrition Optimizer", layout="centered")
+st.title("🍽️ Nutrition Optimizer")
+st.write("Select your available ingredients and dietary goal to find the best meal or recipe.")
 
-st.title("🥗 Nutrition Optimizer")
+# User input for ingredients
+food_input = st.text_input("Search for a food to add (type slowly for suggestions)")
+suggestions = search_usda_suggestions(food_input) if food_input else []
 
-# Search bar
-search = st.text_input("Search for a food:", "")
+if suggestions:
+    st.write("Suggestions:")
+    for s in suggestions:
+        if st.button(f"Add {s}"):
+            nutrition = get_nutrition(search_usda_suggestions(s)[0])
+            nutrition["Available (g)"] = 100
+            st.session_state.selected_foods.append(nutrition)
+
+# Set up session state
 if "selected_foods" not in st.session_state:
     st.session_state.selected_foods = []
 
-# Handle food search and add
-if search:
-    suggestions = search_usda_suggestions(search)
-    selection = st.selectbox("Select from suggestions:", suggestions)
-    if st.button("Add Food"):
-        matches = search_food(selection)
-        if matches:
-            nutrients = get_nutrition(matches[0][0])
-            nutrients["Available (g)"] = 100
-            st.session_state.selected_foods.append(nutrients)
+st.write("### Selected Foods")
+df = pd.DataFrame(st.session_state.selected_foods)
+st.dataframe(df)
 
-# Show selected foods
-if st.session_state.selected_foods:
-    df_foods = pd.DataFrame(st.session_state.selected_foods)
-    df_foods.set_index("Food", inplace=True)
-    edited = st.data_editor(df_foods, num_rows="dynamic")
-    st.session_state.selected_foods = edited.reset_index().to_dict(orient="records")
+# Dietary goal
+goal = st.selectbox("Choose optimization goal", [
+    "maximize_protein", "minimize_calories", "minimize_fat", "minimize_cholesterol", "maximize_fiber"
+])
 
-# Goal and calories
-goal = st.selectbox("Optimization goal:", ["maximize_protein", "minimize_carbs", "minimize_fat", "minimize_cholesterol"])
-min_calories = st.number_input("Min Calories (optional)", value=0)
-max_calories = st.number_input("Max Calories (optional)", value=1000)
+# Calorie constraints
+min_cal = st.number_input("Minimum calories", min_value=0, value=0)
+max_cal = st.number_input("Maximum calories", min_value=0, value=1000)
 
-# Optimize by Recipe
-if st.button("Optimize by Recipe"):
-    buildable = {
-        name: ingredients
-        for name, ingredients in recipes.items()
-        if recipe_is_makeable(ingredients, st.session_state.selected_foods)
-    }
-    if not buildable:
-        st.warning("❌ No buildable recipes with your selected foods.")
-    else:
-        df = build_recipe_macros(buildable, st.session_state.selected_foods)
-        result = optimize_recipe_via_api(df, goal, min_calories, max_calories)
-        if result:
-            st.success(f"✅ Best Recipe: {result['Recipe']}")
-            st.write(result)
-        else:
-            st.error("❌ Optimization failed.")
-
-# Optimize by Food
-if st.button("Optimize by Food"):
-    result = optimize_food_via_api(st.session_state.selected_foods, goal, min_calories, max_calories)
+if st.button("Optimize Foods"):
+    result = optimize_food_via_api(st.session_state.selected_foods, goal, min_cal, max_cal)
     if result:
-        st.success("✅ Optimization Successful")
-        st.write(pd.DataFrame(result))
+        st.write("### Optimal Food Combination")
+        st.dataframe(pd.DataFrame(result))
+
+# Optimize Recipes
+from recipes_data import recipes, ingredients
+if st.button("Optimize Recipes"):
+    if any(recipe_logic.recipe_is_makeable(ingredients[name], st.session_state.selected_foods) for name in recipes):
+        df_macros = build_recipe_macros(recipes, st.session_state.selected_foods)
+        result = optimize_recipe_via_api(df_macros, goal, min_cal, max_cal)
+        if result:
+            st.write("### Optimal Recipe")
+            st.json(result)
     else:
-        st.error("❌ Optimization failed.")
+        st.write("No recipes are makeable with selected foods.")
