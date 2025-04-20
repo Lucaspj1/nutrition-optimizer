@@ -1,58 +1,151 @@
 import requests
-from fuzzywuzzy import process
+import difflib
+from collections import defaultdict
+from pyomo.environ import *
 
-# === Constants ===
-API_KEY = "AwQOO35hr05OR3A6DtOqM1IO6LERLFppuVdpjY2f"
+USDA_API_KEY = "AwQOO35hr05OR3A6DtOqM1IO6LERLFppuVdpjY2f"
+USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
+
 NUTRIENT_IDS = {
-    "protein": "1003",
-    "fat": "1004",
-    "carbs": "1005",
-    "fiber": "1079",
-    "calories": "1008",
-    "cholesterol": "1253"
+    "protein": 1003,
+    "fat": 1004,
+    "carbs": 1005,
+    "fiber": 1079,
+    "calories": 1008,
+    "cholesterol": 1253
 }
 
-# === Helper to get macros from USDA API ===
-def get_nutrition(food_id):
-    url = f"https://api.nal.usda.gov/fdc/v1/food/{food_id}?api_key={API_KEY}"
-    response = requests.get(url)
-    data = response.json()
 
-    nutrients = {key: 0 for key in NUTRIENT_IDS}
-
-    for item in data.get("foodNutrients", []):
-        for macro, macro_id in NUTRIENT_IDS.items():
-            if str(item.get("nutrient", {}).get("id")) == macro_id:
-                nutrients[macro] = item.get("amount", 0)
-
-    return nutrients
-
-# === Macro breakdown builder ===
-def build_recipe_macros(recipe, ingredients_data):
-    macros = {key: 0 for key in NUTRIENT_IDS}
-    for ingredient in recipe["ingredients"]:
-        food_id = ingredient["id"]
-        quantity = ingredient["grams"]
-        food_macros = ingredients_data.get(food_id, {})
-
-        for macro in macros:
-            macros[macro] += food_macros.get(macro, 0) * (quantity / 100)
-
-    return macros
-
-# === Recipe optimizer placeholder ===
-def optimize_recipe_via_api(ingredients, goal, min_calories=None, max_calories=None):
-    # Placeholder for recipe selection logic
-    # Returns a hardcoded match for now
-    if not ingredients:
+def get_nutrition(food_name):
+    params = {
+        "api_key": USDA_API_KEY,
+        "query": food_name,
+        "pageSize": 1,
+        "dataType": ["Foundation"]
+    }
+    response = requests.get(USDA_BASE_URL, params=params)
+    if response.status_code != 200 or not response.json().get("foods"):
         return None
 
+    food = response.json()["foods"][0]
+    nutrient_map = {nutrient["nutrientId"]: nutrient["value"] for nutrient in food["foodNutrients"]}
+
     return {
-        "name": "Beef Rice Bowl",
-        "ingredients": ingredients
+        "name": food["description"],
+        "protein": nutrient_map.get(NUTRIENT_IDS["protein"], 0),
+        "fat": nutrient_map.get(NUTRIENT_IDS["fat"], 0),
+        "carbs": nutrient_map.get(NUTRIENT_IDS["carbs"], 0),
+        "fiber": nutrient_map.get(NUTRIENT_IDS["fiber"], 0),
+        "calories": nutrient_map.get(NUTRIENT_IDS["calories"], 0),
+        "cholesterol": nutrient_map.get(NUTRIENT_IDS["cholesterol"], 0),
     }
 
-# === Food optimizer placeholder ===
-def optimize_food_via_api(ingredients, goal, min_calories=None, max_calories=None):
-    # Placeholder for optimization logic
-    return ingredients
+
+def search_usda_suggestions(query):
+    params = {
+        "query": query,
+        "api_key": USDA_API_KEY,
+        "pageSize": 25,
+        "dataType": ["Foundation"]
+    }
+    response = requests.get(USDA_BASE_URL, params=params)
+    if response.status_code != 200:
+        return []
+
+    foods = response.json().get("foods", [])
+    descriptions = [food["description"] for food in foods]
+    return difflib.get_close_matches(query, descriptions, n=5, cutoff=0.1)
+
+
+def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
+    model = ConcreteModel()
+    model.Foods = range(len(foods))
+    model.Quantity = Var(model.Foods, domain=NonNegativeReals)
+
+    def nutrient_sum(nutrient):
+        return sum(foods[i][nutrient] * model.Quantity[i] / 100 for i in model.Foods)
+
+    if goal == "maximize_protein":
+        model.Objective = Objective(expr=-nutrient_sum("protein"))
+    elif goal == "minimize_fat":
+        model.Objective = Objective(expr=nutrient_sum("fat"))
+    elif goal == "minimize_cholesterol":
+        model.Objective = Objective(expr=nutrient_sum("cholesterol"))
+    elif goal == "minimize_calories":
+        model.Objective = Objective(expr=nutrient_sum("calories"))
+    elif goal == "maximize_fiber":
+        model.Objective = Objective(expr=-nutrient_sum("fiber"))
+    else:
+        raise ValueError("Unknown goal")
+
+    if min_calories:
+        model.MinCal = Constraint(expr=nutrient_sum("calories") >= min_calories)
+    if max_calories:
+        model.MaxCal = Constraint(expr=nutrient_sum("calories") <= max_calories)
+
+    for i in model.Foods:
+        model.add_component(f"limit_{i}", Constraint(expr=model.Quantity[i] <= foods[i].get("Grams", 0)))
+
+    solver = SolverFactory("glpk", executable="/opt/homebrew/bin/glpsol")
+    solver.solve(model)
+
+    servings = {foods[i]["name"]: round(value(model.Quantity[i]), 2) for i in model.Foods}
+    macros = {
+        nutrient: round(sum(value(model.Quantity[i]) * foods[i][nutrient] / 100 for i in model.Foods), 2)
+        for nutrient in ["protein", "carbs", "fat", "fiber", "calories", "cholesterol"]
+    }
+
+    return servings, macros
+
+
+def build_recipe_macros(recipe_dict, selected_ingredients):
+    df = []
+    for name, ingr_dict in recipe_dict.items():
+        total = defaultdict(float)
+        for ingr, amount in ingr_dict.items():
+            match = next((f for f in selected_ingredients if ingr.lower() in f["name"].lower()), None)
+            if match:
+                for macro in ["protein", "carbs", "fat", "fiber", "calories", "cholesterol"]:
+                    total[macro] += match.get(macro, 0) * (amount / 100)
+        total["Recipe"] = name
+        df.append(total)
+    return df
+
+
+def optimize_recipe_via_api(df, goal, min_calories=None, max_calories=None):
+    model = ConcreteModel()
+    model.I = range(len(df))
+    model.x = Var(model.I, domain=Binary)
+
+    def macro_sum(macro):
+        return sum(df[i][macro] * model.x[i] for i in model.I)
+
+    if goal == "maximize_protein":
+        model.obj = Objective(expr=-macro_sum("protein"))
+    elif goal == "minimize_fat":
+        model.obj = Objective(expr=macro_sum("fat"))
+    elif goal == "minimize_cholesterol":
+        model.obj = Objective(expr=macro_sum("cholesterol"))
+    elif goal == "minimize_calories":
+        model.obj = Objective(expr=macro_sum("calories"))
+    elif goal == "maximize_fiber":
+        model.obj = Objective(expr=-macro_sum("fiber"))
+
+    model.only_one = Constraint(expr=sum(model.x[i] for i in model.I) == 1)
+    if min_calories:
+        model.min_cals = Constraint(expr=macro_sum("calories") >= min_calories)
+    if max_calories:
+        model.max_cals = Constraint(expr=macro_sum("calories") <= max_calories)
+
+    solver = SolverFactory("glpk", executable="/opt/homebrew/bin/glpsol")
+    solver.solve(model)
+
+    for i in model.I:
+        if value(model.x[i]) > 0.5:
+            return df[i]
+    return None
+
+
+def recipe_is_makeable(recipe_ingredients, selected_foods):
+    selected_names = [f["name"].lower() for f in selected_foods]
+    return all(any(ingr.lower() in name for name in selected_names) for ingr in recipe_ingredients)
