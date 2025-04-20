@@ -1,7 +1,7 @@
 import requests
 import difflib
-from collections import defaultdict
 from pyomo.environ import *
+from collections import defaultdict
 
 USDA_API_KEY = "AwQOO35hr05OR3A6DtOqM1IO6LERLFppuVdpjY2f"
 USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
@@ -15,7 +15,6 @@ NUTRIENT_IDS = {
     "cholesterol": 1253
 }
 
-
 def get_nutrition(food_name):
     params = {
         "api_key": USDA_API_KEY,
@@ -28,34 +27,31 @@ def get_nutrition(food_name):
         return None
 
     food = response.json()["foods"][0]
-    nutrient_map = {nutrient["nutrientId"]: nutrient["value"] for nutrient in food["foodNutrients"]}
+    food_nutrients = {nutrient["nutrientId"]: nutrient["value"] for nutrient in food["foodNutrients"]}
 
     return {
         "name": food["description"],
-        "protein": nutrient_map.get(NUTRIENT_IDS["protein"], 0),
-        "fat": nutrient_map.get(NUTRIENT_IDS["fat"], 0),
-        "carbs": nutrient_map.get(NUTRIENT_IDS["carbs"], 0),
-        "fiber": nutrient_map.get(NUTRIENT_IDS["fiber"], 0),
-        "calories": nutrient_map.get(NUTRIENT_IDS["calories"], 0),
-        "cholesterol": nutrient_map.get(NUTRIENT_IDS["cholesterol"], 0),
+        "protein": food_nutrients.get(NUTRIENT_IDS["protein"], 0),
+        "fat": food_nutrients.get(NUTRIENT_IDS["fat"], 0),
+        "carbs": food_nutrients.get(NUTRIENT_IDS["carbs"], 0),
+        "fiber": food_nutrients.get(NUTRIENT_IDS["fiber"], 0),
+        "calories": food_nutrients.get(NUTRIENT_IDS["calories"], 0),
+        "cholesterol": food_nutrients.get(NUTRIENT_IDS["cholesterol"], 0),
+        "Grams": 100  # always assume 100g default reference from USDA
     }
 
-
 def search_usda_suggestions(query):
-    params = {
+    response = requests.get(USDA_BASE_URL, params={
         "query": query,
         "api_key": USDA_API_KEY,
         "pageSize": 25,
         "dataType": ["Foundation"]
-    }
-    response = requests.get(USDA_BASE_URL, params=params)
+    })
     if response.status_code != 200:
         return []
 
-    foods = response.json().get("foods", [])
-    descriptions = [food["description"] for food in foods]
+    descriptions = [food["description"] for food in response.json().get("foods", [])]
     return difflib.get_close_matches(query, descriptions, n=5, cutoff=0.1)
-
 
 def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
     model = ConcreteModel()
@@ -76,7 +72,7 @@ def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
     elif goal == "maximize_fiber":
         model.Objective = Objective(expr=-nutrient_sum("fiber"))
     else:
-        raise ValueError("Unknown goal")
+        raise ValueError("Unknown optimization goal")
 
     if min_calories:
         model.MinCal = Constraint(expr=nutrient_sum("calories") >= min_calories)
@@ -97,7 +93,6 @@ def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
 
     return servings, macros
 
-
 def build_recipe_macros(recipe_dict, selected_ingredients):
     df = []
     for name, ingr_dict in recipe_dict.items():
@@ -110,7 +105,6 @@ def build_recipe_macros(recipe_dict, selected_ingredients):
         total["Recipe"] = name
         df.append(total)
     return df
-
 
 def optimize_recipe_via_api(df, goal, min_calories=None, max_calories=None):
     model = ConcreteModel()
@@ -144,7 +138,6 @@ def optimize_recipe_via_api(df, goal, min_calories=None, max_calories=None):
         if value(model.x[i]) > 0.5:
             return df[i]
     return None
-
 
 def recipe_is_makeable(recipe_ingredients, selected_foods):
     selected_names = [f["name"].lower() for f in selected_foods]
