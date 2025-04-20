@@ -1,4 +1,4 @@
-]import requests
+import requests
 import difflib
 import os
 import logging
@@ -26,6 +26,48 @@ NUTRIENT_IDS = {
 
 # Standard keys we'll use throughout the application
 STANDARD_KEYS = ["name", "protein", "fat", "carbs", "fiber", "calories", "cholesterol"]
+
+def get_solver():
+    """Try multiple solvers and return the first one that works"""
+    # List of solvers to try, in order of preference
+    solvers_to_try = [
+        {"name": "glpk", "paths": [
+            None,  # Try without path first
+            "glpsol",
+            "/usr/bin/glpsol",
+            "/opt/homebrew/bin/glpsol",
+            "/app/.apt/usr/bin/glpsol"
+        ]},
+        {"name": "cbc", "paths": [None]},  # CBC solver (fallback)
+        {"name": "ipopt", "paths": [None]},  # IPOPT solver (another fallback)
+    ]
+    
+    # Try each solver
+    for solver_info in solvers_to_try:
+        solver_name = solver_info["name"]
+        for path in solver_info["paths"]:
+            try:
+                if path:
+                    solver = SolverFactory(solver_name, executable=path)
+                else:
+                    solver = SolverFactory(solver_name)
+                
+                # Test if solver works by solving a tiny problem
+                test_model = ConcreteModel()
+                test_model.x = Var(domain=NonNegativeReals)
+                test_model.obj = Objective(expr=test_model.x, sense=maximize)
+                test_model.con = Constraint(expr=test_model.x <= 1)
+                
+                results = solver.solve(test_model)
+                if results.solver.status == SolverStatus.ok:
+                    logger.info(f"Using {solver_name} solver{' at '+path if path else ''}")
+                    return solver
+            except Exception as e:
+                logger.debug(f"Failed to use solver {solver_name}{' at '+path if path else ''}: {str(e)}")
+                continue
+    
+    # If we get here, no solver worked
+    raise Exception("No working linear programming solver found. Please install GLPK, CBC, or another solver.")
 
 def search_usda_suggestions(query):
     """Search for food suggestions in the USDA database"""
@@ -384,31 +426,8 @@ def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
                 Constraint(expr=model.Quantity[i] <= sanitized_foods[i].get("Grams", 100))
             )
         
-        # Use a solver that's available in the environment
-        try:
-            # First try without specifying path
-            solver = SolverFactory("glpk")
-        except:
-            # Try with common paths
-            paths = [
-                "glpsol",                      # PATH environment
-                "/usr/bin/glpsol",             # Linux common path
-                "/opt/homebrew/bin/glpsol",    # Mac Homebrew
-                "/app/.apt/usr/bin/glpsol"     # Heroku apt buildpack
-            ]
-            
-            for path in paths:
-                try:
-                    solver = SolverFactory("glpk", executable=path)
-                    logger.info(f"Found GLPK solver at {path}")
-                    break
-                except:
-                    continue
-            else:
-                # If we get here, no solver was found
-                logger.error("Could not find a valid GLPK solver. Make sure it's installed.")
-                return None
-        
+        # Get a solver using our utility function
+        solver = get_solver()
         results = solver.solve(model)
         
         if results.solver.status != SolverStatus.ok:
@@ -425,7 +444,7 @@ def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
         # Calculate total macros
         macros = {
             nutrient: round(sum(value(model.Quantity[i]) * sanitized_foods[i][nutrient] / sanitized_foods[i].get("Grams", 100)
-                            for i in model.Foods), 2)
+                               for i in model.Foods), 2)
             for nutrient in ["protein", "carbs", "fat", "fiber", "calories", "cholesterol"]
         }
         
@@ -476,31 +495,8 @@ def optimize_recipe_via_api(recipe_data, goal, min_calories=None, max_calories=N
         if max_calories is not None and max_calories > 0:
             model.max_cals = Constraint(expr=macro_sum("calories") <= float(max_calories))
         
-        # Use a solver that's available in the environment
-        try:
-            # First try without specifying path
-            solver = SolverFactory("glpk")
-        except:
-            # Try with common paths
-            paths = [
-                "glpsol",                      # PATH environment
-                "/usr/bin/glpsol",             # Linux common path
-                "/opt/homebrew/bin/glpsol",    # Mac Homebrew
-                "/app/.apt/usr/bin/glpsol"     # Heroku apt buildpack
-            ]
-            
-            for path in paths:
-                try:
-                    solver = SolverFactory("glpk", executable=path)
-                    logger.info(f"Found GLPK solver at {path}")
-                    break
-                except:
-                    continue
-            else:
-                # If we get here, no solver was found
-                logger.error("Could not find a valid GLPK solver. Make sure it's installed.")
-                return None
-        
+        # Get a solver using our utility function
+        solver = get_solver()
         results = solver.solve(model)
         
         if results.solver.status != SolverStatus.ok:

@@ -2,10 +2,9 @@ streamlit==1.29.0
 pyomo==6.6.1
 pandas==2.1.1
 requests==2.31.0
-difflib
 flask==2.3.3
 numpy==1.26.0
 matplotlib==3.8.0
-plotly==5.18.0
-statsmodels==0.14.0
-scipy==1.11.3
+# Add CBC solver as a fallback option
+cylp
+coinor-cbc
