@@ -1,3 +1,4 @@
-glpk
+glpk-utils
 libglpk-dev
-coinor-cbc
+coinor-libcbc3
+coinor-libcbc-dev
