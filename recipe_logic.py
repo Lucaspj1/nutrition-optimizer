@@ -31,6 +31,9 @@ def get_solver():
     """Try multiple solvers and return the first one that works"""
     # List of solvers to try, in order of preference
     solvers_to_try = [
+        # Try IPOPT first (more likely to be available via pip)
+        {"name": "ipopt", "paths": [None]},
+        # Then try GLPK (system installed)
         {"name": "glpk", "paths": [
             None,  # Try without path first
             "glpsol",
@@ -38,8 +41,8 @@ def get_solver():
             "/opt/homebrew/bin/glpsol",
             "/app/.apt/usr/bin/glpsol"
         ]},
-        {"name": "cbc", "paths": [None]},  # CBC solver (fallback)
-        {"name": "ipopt", "paths": [None]},  # IPOPT solver (another fallback)
+        # Then try CBC (system installed)
+        {"name": "cbc", "paths": [None]}
     ]
     
     # Try each solver
@@ -67,7 +70,7 @@ def get_solver():
                 continue
     
     # If we get here, no solver worked
-    raise Exception("No working linear programming solver found. Please install GLPK, CBC, or another solver.")
+    raise Exception("No working linear programming solver found. Please install GLPK, IPOPT, or another solver that works with Pyomo.")
 
 def search_usda_suggestions(query):
     """Search for food suggestions in the USDA database"""
