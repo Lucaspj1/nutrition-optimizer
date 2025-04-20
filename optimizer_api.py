@@ -2,8 +2,17 @@ from flask import Flask, request, jsonify
 from pyomo.environ import *
 import pandas as pd
 import traceback
+import os
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# Get port from environment for cloud deployment
+port = int(os.environ.get("PORT", 5001))
 
 @app.route('/optimize-foods', methods=['POST'])
 def optimize_foods():
@@ -81,8 +90,31 @@ def optimize_foods():
         else:
             return jsonify({"error": f"Unknown goal: {goal}"}), 400
 
+        # Try different solver paths based on environment
+        try:
+            # First try without specifying path
+            solver = SolverFactory("glpk")
+        except:
+            # Try with common paths
+            paths = [
+                "glpsol",                      # PATH environment
+                "/usr/bin/glpsol",             # Linux common path
+                "/opt/homebrew/bin/glpsol",    # Mac Homebrew
+                "/app/.apt/usr/bin/glpsol"     # Heroku apt buildpack
+            ]
+            
+            for path in paths:
+                try:
+                    solver = SolverFactory("glpk", executable=path)
+                    logger.info(f"Found GLPK solver at {path}")
+                    break
+                except:
+                    continue
+            else:
+                # If we get here, no solver was found
+                return jsonify({"error": "Could not find a valid GLPK solver. Make sure it's installed."}), 500
+
         # Solve the model
-        solver = SolverFactory('glpk', executable='/opt/homebrew/bin/glpsol')
         results = solver.solve(model)
 
         if results.solver.status != SolverStatus.ok:
@@ -127,6 +159,8 @@ def optimize_foods():
         })
         
     except Exception as e:
+        logger.error(f"Error in optimize_foods: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({
             "error": str(e),
             "traceback": traceback.format_exc()
@@ -172,7 +206,7 @@ def optimize_recipe():
         model.total_chol = Expression(rule=total_chol)
 
         # Add constraint: only select one recipe
-        model.only_one = Constraint(expr=sum(model.x[i] for i in m.I) == 1)
+        model.only_one = Constraint(expr=sum(model.x[i] for i in model.I) == 1)
         
         # Add calorie constraints
         model.cal_lb = Constraint(expr=model.total_calories >= min_cal)
@@ -192,8 +226,31 @@ def optimize_recipe():
         else:
             return jsonify({"error": f"Unknown goal: {goal}"}), 400
 
+        # Try different solver paths based on environment
+        try:
+            # First try without specifying path
+            solver = SolverFactory("glpk")
+        except:
+            # Try with common paths
+            paths = [
+                "glpsol",                      # PATH environment
+                "/usr/bin/glpsol",             # Linux common path
+                "/opt/homebrew/bin/glpsol",    # Mac Homebrew
+                "/app/.apt/usr/bin/glpsol"     # Heroku apt buildpack
+            ]
+            
+            for path in paths:
+                try:
+                    solver = SolverFactory("glpk", executable=path)
+                    logger.info(f"Found GLPK solver at {path}")
+                    break
+                except:
+                    continue
+            else:
+                # If we get here, no solver was found
+                return jsonify({"error": "Could not find a valid GLPK solver. Make sure it's installed."}), 500
+
         # Solve the model
-        solver = SolverFactory('glpk', executable='/opt/homebrew/bin/glpsol')
         results = solver.solve(model)
         
         if results.solver.status != SolverStatus.ok:
@@ -219,10 +276,18 @@ def optimize_recipe():
         return jsonify({"error": "No recipe selected"}), 404
         
     except Exception as e:
+        logger.error(f"Error in optimize_recipe: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({
             "error": str(e),
             "traceback": traceback.format_exc()
         }), 500
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Simple health check endpoint"""
+    return jsonify({"status": "UP"})
+
 if __name__ == "__main__":
-    app.run(port=5001, debug=True)
+    # Use host 0.0.0.0 to make the API accessible from other machines
+    app.run(host="0.0.0.0", port=port, debug=True)
