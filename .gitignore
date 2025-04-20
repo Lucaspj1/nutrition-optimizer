@@ -1,1 +1,6 @@
 __pycache__/
+
+# Ignore pycache and virtualenv
+__pycache__/
+*.pyc
+venv/
