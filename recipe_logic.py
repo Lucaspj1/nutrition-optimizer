@@ -1,8 +1,8 @@
-from pyomo.environ import ConcreteModel, Var, Objective, Constraint, NonNegativeReals, SolverFactory, minimize
-import numpy as np
 import requests
+from fuzzywuzzy import process
 
-# USDA Nutrient IDs (as constants)
+# === Constants ===
+API_KEY = "AwQOO35hr05OR3A6DtOqM1IO6LERLFppuVdpjY2f"
 NUTRIENT_IDS = {
     "protein": "1003",
     "fat": "1004",
@@ -12,8 +12,7 @@ NUTRIENT_IDS = {
     "cholesterol": "1253"
 }
 
-API_KEY = "AwQOO35hr05OR3A6DtOqM1IO6LERLFppuVdpjY2f"
-
+# === Helper to get macros from USDA API ===
 def get_nutrition(food_id):
     url = f"https://api.nal.usda.gov/fdc/v1/food/{food_id}?api_key={API_KEY}"
     response = requests.get(url)
@@ -28,65 +27,32 @@ def get_nutrition(food_id):
 
     return nutrients
 
-def optimize_recipe_via_api(ingredients, recipes, goal, min_calories=None, max_calories=None):
-    model = ConcreteModel()
+# === Macro breakdown builder ===
+def build_recipe_macros(recipe, ingredients_data):
+    macros = {key: 0 for key in NUTRIENT_IDS}
+    for ingredient in recipe["ingredients"]:
+        food_id = ingredient["id"]
+        quantity = ingredient["grams"]
+        food_macros = ingredients_data.get(food_id, {})
 
-    recipe_names = list(recipes.keys())
-    model.x = Var(recipe_names, domain=NonNegativeReals)
+        for macro in macros:
+            macros[macro] += food_macros.get(macro, 0) * (quantity / 100)
 
-    # Objective
-    if goal == "maximize_protein":
-        model.obj = Objective(expr=sum(model.x[r] * recipes[r]["protein"] for r in recipe_names), sense=-1 * minimize)
-    elif goal == "minimize_calories":
-        model.obj = Objective(expr=sum(model.x[r] * recipes[r]["calories"] for r in recipe_names), sense=minimize)
-    elif goal == "minimize_cholesterol":
-        model.obj = Objective(expr=sum(model.x[r] * recipes[r]["cholesterol"] for r in recipe_names), sense=minimize)
+    return macros
 
-    # Calorie bounds
-    if min_calories is not None:
-        model.min_cal = Constraint(expr=sum(model.x[r] * recipes[r]["calories"] for r in recipe_names) >= min_calories)
-    if max_calories is not None:
-        model.max_cal = Constraint(expr=sum(model.x[r] * recipes[r]["calories"] for r in recipe_names) <= max_calories)
+# === Recipe optimizer placeholder ===
+def optimize_recipe_via_api(ingredients, goal, min_calories=None, max_calories=None):
+    # Placeholder for recipe selection logic
+    # Returns a hardcoded match for now
+    if not ingredients:
+        return None
 
-    solver = SolverFactory('glpk', executable='/opt/homebrew/bin/glpsol')
-    result = solver.solve(model)
-
-    output = {
-        "status": str(result.solver.status),
-        "objective_value": model.obj(),
-        "quantities": {r: model.x[r].value for r in recipe_names if model.x[r].value > 0.01},
+    return {
+        "name": "Beef Rice Bowl",
+        "ingredients": ingredients
     }
 
-    return output
-
-# ✅ THIS was missing!
-def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
-    model = ConcreteModel()
-
-    food_names = list(foods.keys())
-    model.x = Var(food_names, domain=NonNegativeReals)
-
-    # Objective
-    if goal == "maximize_protein":
-        model.obj = Objective(expr=sum(model.x[f] * foods[f]["protein"] for f in food_names), sense=-1 * minimize)
-    elif goal == "minimize_calories":
-        model.obj = Objective(expr=sum(model.x[f] * foods[f]["calories"] for f in food_names), sense=minimize)
-    elif goal == "minimize_cholesterol":
-        model.obj = Objective(expr=sum(model.x[f] * foods[f]["cholesterol"] for f in food_names), sense=minimize)
-
-    # Calorie bounds
-    if min_calories is not None:
-        model.min_cal = Constraint(expr=sum(model.x[f] * foods[f]["calories"] for f in food_names) >= min_calories)
-    if max_calories is not None:
-        model.max_cal = Constraint(expr=sum(model.x[f] * foods[f]["calories"] for f in food_names) <= max_calories)
-
-    solver = SolverFactory('glpk', executable='/opt/homebrew/bin/glpsol')
-    result = solver.solve(model)
-
-    output = {
-        "status": str(result.solver.status),
-        "objective_value": model.obj(),
-        "quantities": {f: model.x[f].value for f in food_names if model.x[f].value > 0.01},
-    }
-
-    return output
+# === Food optimizer placeholder ===
+def optimize_food_via_api(ingredients, goal, min_calories=None, max_calories=None):
+    # Placeholder for optimization logic
+    return ingredients
