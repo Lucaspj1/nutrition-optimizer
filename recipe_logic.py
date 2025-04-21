@@ -1,16 +1,9 @@
 import requests
 import difflib
-import os
-import logging
 from collections import defaultdict
 from pyomo.environ import *
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# API Configuration - Get from environment or use default
-USDA_API_KEY = os.environ.get("USDA_API_KEY", "AwQOO35hr05OR3A6DtOqM1IO6LERLFppuVdpjY2f")
+USDA_API_KEY = "AwQOO35hr05OR3A6DtOqM1IO6LERLFppuVdpjY2f"
 USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 USDA_FOOD_URL = "https://api.nal.usda.gov/fdc/v1/food/"
 
@@ -26,51 +19,6 @@ NUTRIENT_IDS = {
 
 # Standard keys we'll use throughout the application
 STANDARD_KEYS = ["name", "protein", "fat", "carbs", "fiber", "calories", "cholesterol"]
-
-def get_solver():
-    """Try multiple solvers and return the first one that works"""
-    # List of solvers to try, in order of preference
-    solvers_to_try = [
-        # Try IPOPT first (more likely to be available via pip)
-        {"name": "ipopt", "paths": [None]},
-        # Then try GLPK (system installed)
-        {"name": "glpk", "paths": [
-            None,  # Try without path first
-            "glpsol",
-            "/usr/bin/glpsol",
-            "/opt/homebrew/bin/glpsol",
-            "/app/.apt/usr/bin/glpsol"
-        ]},
-        # Then try CBC (system installed)
-        {"name": "cbc", "paths": [None]}
-    ]
-    
-    # Try each solver
-    for solver_info in solvers_to_try:
-        solver_name = solver_info["name"]
-        for path in solver_info["paths"]:
-            try:
-                if path:
-                    solver = SolverFactory(solver_name, executable=path)
-                else:
-                    solver = SolverFactory(solver_name)
-                
-                # Test if solver works by solving a tiny problem
-                test_model = ConcreteModel()
-                test_model.x = Var(domain=NonNegativeReals)
-                test_model.obj = Objective(expr=test_model.x, sense=maximize)
-                test_model.con = Constraint(expr=test_model.x <= 1)
-                
-                results = solver.solve(test_model)
-                if results.solver.status == SolverStatus.ok:
-                    logger.info(f"Using {solver_name} solver{' at '+path if path else ''}")
-                    return solver
-            except Exception as e:
-                logger.debug(f"Failed to use solver {solver_name}{' at '+path if path else ''}: {str(e)}")
-                continue
-    
-    # If we get here, no solver worked
-    raise Exception("No working linear programming solver found. Please install GLPK, IPOPT, or another solver that works with Pyomo.")
 
 def search_usda_suggestions(query):
     """Search for food suggestions in the USDA database"""
@@ -90,7 +38,7 @@ def search_usda_suggestions(query):
         foods = response.json().get("foods", [])
         return [{"name": food["description"], "fdcId": food["fdcId"]} for food in foods]
     except Exception as e:
-        logger.error(f"Error searching foods: {e}")
+        print(f"Error searching foods: {e}")
         return []
 
 def get_nutrition(fdc_id):
@@ -103,7 +51,7 @@ def get_nutrition(fdc_id):
         r.raise_for_status()
         data = r.json()
     except Exception as e:
-        logger.error(f"Error fetching food data: {e}")
+        print(f"Error fetching food data: {e}")
         return None
     
     nutrients = {
@@ -230,7 +178,7 @@ def find_best_match_for_ingredient(ingredient, selected_foods):
     ingredient_base = extract_base_food_name(ingredient)
     ingredient_first_word = ingredient_base.split()[0] if ingredient_base.split() else ""
     
-    logger.debug(f"Finding best match for: {ingredient} (base: {ingredient_base})")
+    print(f"Finding best match for: {ingredient} (base: {ingredient_base})")
     
     for food in selected_foods:
         food_name = food.get("name", "").lower()
@@ -246,18 +194,18 @@ def find_best_match_for_ingredient(ingredient, selected_foods):
         # Bonus for matching first word (usually the main food item)
         if ingredient_first_word and food_first_word and ingredient_first_word == food_first_word:
             score += 0.5
-            logger.debug(f"  First word match bonus for {food_name}: +0.5")
+            print(f"  First word match bonus for {food_name}: +0.5")
         
         # Exact base name match is highest priority
         if ingredient_base == food_base:
             score += 1.0
-            logger.debug(f"  Exact match bonus for {food_name}: +1.0")
+            print(f"  Exact match bonus for {food_name}: +1.0")
         # One name contains the other
         elif ingredient_base in food_base or food_base in ingredient_base:
             score += 0.3
-            logger.debug(f"  Substring match bonus for {food_name}: +0.3")
+            print(f"  Substring match bonus for {food_name}: +0.3")
         
-        logger.debug(f"  Score for {food_name}: {score:.2f}")
+        print(f"  Score for {food_name}: {score:.2f}")
         
         if score > highest_score:
             highest_score = score
@@ -265,8 +213,7 @@ def find_best_match_for_ingredient(ingredient, selected_foods):
     
     # Be more lenient with matching threshold (reduced from 0.3 to 0.2)
     result = best_match if highest_score > 0.2 else None
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"  Best match: {best_match['name'] if best_match else 'None'} (score: {highest_score:.2f})")
+    print(f"  Best match: {best_match['name'] if best_match else 'None'} (score: {highest_score:.2f})")
     
     return result
 
@@ -278,8 +225,8 @@ def recipe_is_makeable(recipe_ingredients, selected_foods):
     # Extract base names from selected foods
     selected_base_names = [extract_base_food_name(f["name"]) for f in selected_foods]
     
-    logger.debug(f"Recipe ingredients: {recipe_ingredients}")
-    logger.debug(f"Selected food base names: {selected_base_names}")
+    print(f"Recipe ingredients: {recipe_ingredients}")
+    print(f"Selected food base names: {selected_base_names}")
     
     # Count how many ingredients we can match
     matched_ingredients = 0
@@ -288,7 +235,7 @@ def recipe_is_makeable(recipe_ingredients, selected_foods):
         ingredient_first = ingredient_base.split()[0] if ingredient_base.split() else ""
         ingredient_found = False
         
-        logger.debug(f"Checking ingredient: {ingredient} (base: {ingredient_base}, first: {ingredient_first})")
+        print(f"Checking ingredient: {ingredient} (base: {ingredient_base}, first: {ingredient_first})")
         
         for food in selected_foods:
             food_name = food.get("name", "").lower()
@@ -297,26 +244,26 @@ def recipe_is_makeable(recipe_ingredients, selected_foods):
             
             # Check if the base ingredient names match
             if ingredient_base in food_base or food_base in ingredient_base:
-                logger.debug(f"  ✓ Base name match: {food_name}")
+                print(f"  ✓ Base name match: {food_name}")
                 ingredient_found = True
                 break
                 
             # Check for matching first word (usually the main food item)
             if ingredient_first and food_first and ingredient_first == food_first:
-                logger.debug(f"  ✓ First word match: {food_name}")
+                print(f"  ✓ First word match: {food_name}")
                 ingredient_found = True
                 break
                 
         if ingredient_found:
             matched_ingredients += 1
-            logger.debug(f"  ✓ Found match for {ingredient}")
+            print(f"  ✓ Found match for {ingredient}")
         else:
-            logger.debug(f"  ✗ No match found for {ingredient}")
+            print(f"  ✗ No match found for {ingredient}")
     
     match_ratio = matched_ingredients / len(recipe_ingredients) if recipe_ingredients else 0
     is_makeable = match_ratio >= 0.7
     
-    logger.debug(f"Recipe match ratio: {match_ratio:.2f} ({matched_ingredients}/{len(recipe_ingredients)}) - Makeable: {is_makeable}")
+    print(f"Recipe match ratio: {match_ratio:.2f} ({matched_ingredients}/{len(recipe_ingredients)}) - Makeable: {is_makeable}")
     
     # Recipe is makeable if we can match at least 70% of ingredients
     return is_makeable
@@ -327,10 +274,10 @@ def build_recipe_macros(recipe_dict, selected_foods):
         return []
     
     result = []
-    logger.info(f"Building recipe macros for {len(recipe_dict)} recipes with {len(selected_foods)} foods")
+    print(f"\nBuilding recipe macros for {len(recipe_dict)} recipes with {len(selected_foods)} foods")
     
     for name, ingr_dict in recipe_dict.items():
-        logger.debug(f"Analyzing recipe: {name}")
+        print(f"\nAnalyzing recipe: {name}")
         total = defaultdict(float)
         ingredients_found = 0
         total_ingredients = len(ingr_dict)
@@ -342,21 +289,21 @@ def build_recipe_macros(recipe_dict, selected_foods):
             # Add nutrients from this ingredient
             if best_match:
                 ingredients_found += 1
-                logger.debug(f"  ✓ Found match for {ingr}: {best_match['name']}")
+                print(f"  ✓ Found match for {ingr}: {best_match['name']}")
                 for macro in ["protein", "fat", "carbs", "fiber", "calories", "cholesterol"]:
                     # Convert from per 100g to the amount used in recipe
                     value = best_match.get(macro, 0) * (amount / 100)
                     total[macro] += value
             else:
-                logger.debug(f"  ✗ No match found for {ingr}")
+                print(f"  ✗ No match found for {ingr}")
         
         # Be more lenient - require only 50% of ingredients (reduced from 60%)
         min_ingredients_needed = max(1, round(total_ingredients * 0.5))
         
-        logger.debug(f"  Found {ingredients_found}/{total_ingredients} ingredients (need {min_ingredients_needed})")
+        print(f"  Found {ingredients_found}/{total_ingredients} ingredients (need {min_ingredients_needed})")
         
         if ingredients_found >= min_ingredients_needed:
-            logger.debug(f"  ✓ Recipe is makeable with available ingredients")
+            print(f"  ✓ Recipe is makeable with available ingredients")
             # Add recipe name to results
             total["Recipe"] = name
             # Add ingredients found info for debugging
@@ -364,9 +311,9 @@ def build_recipe_macros(recipe_dict, selected_foods):
             total["total_ingredients"] = total_ingredients
             result.append(dict(total))
         else:
-            logger.debug(f"  ✗ Not enough matching ingredients to make this recipe")
+            print(f"  ✗ Not enough matching ingredients to make this recipe")
     
-    logger.info(f"Found {len(result)} makeable recipes")
+    print(f"\nFound {len(result)} makeable recipes")
     return result
 
 def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
@@ -391,7 +338,7 @@ def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
             sanitized_foods.append(sanitized_food)
     
     if not sanitized_foods:
-        logger.error("No valid foods to optimize")
+        print("❌ No valid foods to optimize")
         return None
     
     try:
@@ -429,12 +376,12 @@ def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
                 Constraint(expr=model.Quantity[i] <= sanitized_foods[i].get("Grams", 100))
             )
         
-        # Get a solver using our utility function
-        solver = get_solver()
+        # Solve the model
+        solver = SolverFactory("glpk", executable="/opt/homebrew/bin/glpsol")
         results = solver.solve(model)
         
         if results.solver.status != SolverStatus.ok:
-            logger.error(f"Solver error: {results.solver.status}")
+            print(f"❌ Solver error: {results.solver.status}")
             return None
         
         # Extract results
@@ -447,15 +394,15 @@ def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
         # Calculate total macros
         macros = {
             nutrient: round(sum(value(model.Quantity[i]) * sanitized_foods[i][nutrient] / sanitized_foods[i].get("Grams", 100)
-                               for i in model.Foods), 2)
+                            for i in model.Foods), 2)
             for nutrient in ["protein", "carbs", "fat", "fiber", "calories", "cholesterol"]
         }
         
         return servings, macros
     except Exception as e:
-        logger.error(f"Error in optimize_food_via_api: {e}")
+        print(f"Error in optimize_food_via_api: {e}")
         import traceback
-        logger.error(traceback.format_exc())
+        traceback.print_exc()
         return None
 
 def optimize_recipe_via_api(recipe_data, goal, min_calories=None, max_calories=None):
@@ -464,7 +411,7 @@ def optimize_recipe_via_api(recipe_data, goal, min_calories=None, max_calories=N
         return None
     
     try:
-        logger.info(f"Starting recipe optimization with {len(recipe_data)} recipes")
+        print(f"Starting recipe optimization with {len(recipe_data)} recipes")
         
         # Create Pyomo model
         model = ConcreteModel()
@@ -486,7 +433,7 @@ def optimize_recipe_via_api(recipe_data, goal, min_calories=None, max_calories=N
         elif goal == "maximize_fiber":
             model.obj = Objective(expr=macro_sum("fiber"), sense=maximize)
         else:
-            logger.error(f"Unknown goal: {goal}")
+            print(f"❌ Unknown goal: {goal}")
             return None
         
         # Add constraint: only select one recipe
@@ -498,12 +445,12 @@ def optimize_recipe_via_api(recipe_data, goal, min_calories=None, max_calories=N
         if max_calories is not None and max_calories > 0:
             model.max_cals = Constraint(expr=macro_sum("calories") <= float(max_calories))
         
-        # Get a solver using our utility function
-        solver = get_solver()
+        # Solve the model
+        solver = SolverFactory("glpk", executable="/opt/homebrew/bin/glpsol")
         results = solver.solve(model)
         
         if results.solver.status != SolverStatus.ok:
-            logger.error(f"Solver error: {results.solver.status}")
+            print(f"❌ Solver error: {results.solver.status}")
             return None
         
         # Get the selected recipe
@@ -515,13 +462,13 @@ def optimize_recipe_via_api(recipe_data, goal, min_calories=None, max_calories=N
                     k: round(v, 2) for k, v in selected_recipe.items()
                     if k not in ["Recipe", "ingredients_found", "total_ingredients"] and isinstance(v, (int, float))
                 }
-                logger.info(f"Selected recipe: {selected_recipe['Recipe']}")
+                print(f"Selected recipe: {selected_recipe['Recipe']}")
                 return selected_recipe["Recipe"], macro_totals
         
-        logger.warning("No recipe selected in optimization result")
+        print("No recipe selected in optimization result")
         return None
     except Exception as e:
-        logger.error(f"Error in optimize_recipe_via_api: {e}")
+        print(f"Error in optimize_recipe_via_api: {e}")
         import traceback
-        logger.error(traceback.format_exc())
+        traceback.print_exc()
         return None

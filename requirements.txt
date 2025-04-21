@@ -5,5 +5,3 @@ requests==2.31.0
 flask==2.3.3
 numpy==1.26.0
 matplotlib==3.8.0
-# Add CBC solver as a fallback option
-coinor-cbc
