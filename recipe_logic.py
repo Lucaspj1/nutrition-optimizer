@@ -7,7 +7,7 @@ USDA_API_KEY = "AwQOO35hr05OR3A6DtOqM1IO6LERLFppuVdpjY2f"
 USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 USDA_FOOD_URL = "https://api.nal.usda.gov/fdc/v1/food/"
 
-# Updated nutrient IDs to ensure correct mapping
+# Updated nutrient IDs 
 NUTRIENT_IDS = {
     "protein": 1003,
     "fat": 1004,
@@ -17,7 +17,7 @@ NUTRIENT_IDS = {
     "cholesterol": 1253
 }
 
-# Standard keys we'll use throughout the application
+# Standard keys 
 STANDARD_KEYS = ["name", "protein", "fat", "carbs", "fiber", "calories", "cholesterol"]
 
 def search_usda_suggestions(query):
@@ -34,7 +34,7 @@ def search_usda_suggestions(query):
     
     try:
         response = requests.get(USDA_BASE_URL, params=params)
-        response.raise_for_status()  # Raise exception for HTTP errors
+        response.raise_for_status()  
         foods = response.json().get("foods", [])
         return [{"name": food["description"], "fdcId": food["fdcId"]} for food in foods]
     except Exception as e:
@@ -64,13 +64,13 @@ def get_nutrition(fdc_id):
         "cholesterol": 0
     }
     
-    # Improved nutrient mapping with more precise matching
+    #Nutrient mapping
     for n in data.get("foodNutrients", []):
         nutrient_name = n.get("nutrient", {}).get("name", "").lower()
         nutrient_id = n.get("nutrient", {}).get("id")
         amount = n.get("amount", 0)
         
-        # Match by nutrient ID first (more reliable)
+        # Match by nutrient ID first 
         if nutrient_id == NUTRIENT_IDS["calories"]:
             nutrients["calories"] = amount
         elif nutrient_id == NUTRIENT_IDS["protein"]:
@@ -107,7 +107,7 @@ def extract_base_food_name(food_name):
     # Convert to lowercase
     name = food_name.lower()
     
-    # Split by commas and take first part (main food item)
+    # Split by commas and take first part of item
     base_name = name.split(',')[0].strip()
     
     # Expanded list of descriptors to filter out
@@ -174,7 +174,7 @@ def find_best_match_for_ingredient(ingredient, selected_foods):
     best_match = None
     highest_score = 0
     
-    # Extract the base name of the ingredient
+    # get just base name
     ingredient_base = extract_base_food_name(ingredient)
     ingredient_first_word = ingredient_base.split()[0] if ingredient_base.split() else ""
     
@@ -191,12 +191,12 @@ def find_best_match_for_ingredient(ingredient, selected_foods):
         # Apply bonus for common food types
         score = similarity
         
-        # Bonus for matching first word (usually the main food item)
+        # Bonus for matching first word 
         if ingredient_first_word and food_first_word and ingredient_first_word == food_first_word:
             score += 0.5
             print(f"  First word match bonus for {food_name}: +0.5")
         
-        # Exact base name match is highest priority
+        # Exact base name match is most important
         if ingredient_base == food_base:
             score += 1.0
             print(f"  Exact match bonus for {food_name}: +1.0")
@@ -211,7 +211,6 @@ def find_best_match_for_ingredient(ingredient, selected_foods):
             highest_score = score
             best_match = food
     
-    # Be more lenient with matching threshold (reduced from 0.3 to 0.2)
     result = best_match if highest_score > 0.2 else None
     print(f"  Best match: {best_match['name'] if best_match else 'None'} (score: {highest_score:.2f})")
     
@@ -222,13 +221,12 @@ def recipe_is_makeable(recipe_ingredients, selected_foods):
     if not selected_foods or not recipe_ingredients:
         return False
     
-    # Extract base names from selected foods
     selected_base_names = [extract_base_food_name(f["name"]) for f in selected_foods]
     
     print(f"Recipe ingredients: {recipe_ingredients}")
     print(f"Selected food base names: {selected_base_names}")
     
-    # Count how many ingredients we can match
+    # Count how many ingredients to match
     matched_ingredients = 0
     for ingredient in recipe_ingredients:
         ingredient_base = extract_base_food_name(ingredient)
@@ -248,7 +246,7 @@ def recipe_is_makeable(recipe_ingredients, selected_foods):
                 ingredient_found = True
                 break
                 
-            # Check for matching first word (usually the main food item)
+            # Check for matching first word 
             if ingredient_first and food_first and ingredient_first == food_first:
                 print(f"  ✓ First word match: {food_name}")
                 ingredient_found = True
@@ -283,7 +281,7 @@ def build_recipe_macros(recipe_dict, selected_foods):
         total_ingredients = len(ingr_dict)
         
         for ingr, amount in ingr_dict.items():
-            # Find best match for this ingredient in selected foods
+            # Find best match for this ingredient 
             best_match = find_best_match_for_ingredient(ingr, selected_foods)
             
             # Add nutrients from this ingredient
@@ -297,7 +295,6 @@ def build_recipe_macros(recipe_dict, selected_foods):
             else:
                 print(f"  ✗ No match found for {ingr}")
         
-        # Be more lenient - require only 50% of ingredients (reduced from 60%)
         min_ingredients_needed = max(1, round(total_ingredients * 0.5))
         
         print(f"  Found {ingredients_found}/{total_ingredients} ingredients (need {min_ingredients_needed})")
@@ -338,7 +335,7 @@ def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
             sanitized_foods.append(sanitized_food)
     
     if not sanitized_foods:
-        print("❌ No valid foods to optimize")
+        print("No valid foods to optimize")
         return None
     
     try:
@@ -363,13 +360,13 @@ def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
         else:
             raise ValueError(f"Unknown goal: {goal}")
         
-        # Add calorie constraints if specified
+        # Add calorie constraints if needed
         if min_calories is not None and min_calories > 0:
             model.MinCal = Constraint(expr=nutrient_sum("calories") >= float(min_calories))
         if max_calories is not None and max_calories > 0:
             model.MaxCal = Constraint(expr=nutrient_sum("calories") <= float(max_calories))
         
-        # Add constraints for available food quantities
+        # Add constraints for quantities
         for i in model.Foods:
             model.add_component(
                 f"limit_{i}",
@@ -381,7 +378,7 @@ def optimize_food_via_api(foods, goal, min_calories=None, max_calories=None):
         results = solver.solve(model)
         
         if results.solver.status != SolverStatus.ok:
-            print(f"❌ Solver error: {results.solver.status}")
+            print(f"Solver error: {results.solver.status}")
             return None
         
         # Extract results
@@ -421,7 +418,6 @@ def optimize_recipe_via_api(recipe_data, goal, min_calories=None, max_calories=N
         def macro_sum(macro):
             return sum(recipe_data[i].get(macro, 0) * model.x[i] for i in model.I)
         
-        # Set objective based on goal using explicit sense
         if goal == "maximize_protein":
             model.obj = Objective(expr=macro_sum("protein"), sense=maximize)
         elif goal == "minimize_fat":
@@ -433,13 +429,12 @@ def optimize_recipe_via_api(recipe_data, goal, min_calories=None, max_calories=N
         elif goal == "maximize_fiber":
             model.obj = Objective(expr=macro_sum("fiber"), sense=maximize)
         else:
-            print(f"❌ Unknown goal: {goal}")
+            print(f"Unknown goal: {goal}")
             return None
         
-        # Add constraint: only select one recipe
         model.only_one = Constraint(expr=sum(model.x[i] for i in model.I) == 1)
         
-        # Add calorie constraints if specified
+        # Add calorie constraints if needed
         if min_calories is not None and min_calories > 0:
             model.min_cals = Constraint(expr=macro_sum("calories") >= float(min_calories))
         if max_calories is not None and max_calories > 0:
@@ -450,14 +445,14 @@ def optimize_recipe_via_api(recipe_data, goal, min_calories=None, max_calories=N
         results = solver.solve(model)
         
         if results.solver.status != SolverStatus.ok:
-            print(f"❌ Solver error: {results.solver.status}")
+            print(f"Solver error: {results.solver.status}")
             return None
         
         # Get the selected recipe
         for i in model.I:
             if value(model.x[i]) > 0.5:
                 selected_recipe = recipe_data[i]
-                # Extract and round nutrition values
+                # round nutrition values
                 macro_totals = {
                     k: round(v, 2) for k, v in selected_recipe.items()
                     if k not in ["Recipe", "ingredients_found", "total_ingredients"] and isinstance(v, (int, float))

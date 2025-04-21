@@ -33,12 +33,12 @@ def optimize_foods():
             }
             standardized_foods.append(std_food)
 
-        # Create optimization model
+        # Createe model
         model = ConcreteModel()
         model.FOODS = range(len(standardized_foods))
         model.x = Var(model.FOODS, domain=NonNegativeReals)
 
-        # Define expressions for each nutrient
+        # Define expressions 
         def total_calories(m): 
             return sum(m.x[i] * standardized_foods[i]["calories"] / standardized_foods[i]["Grams"] for i in m.FOODS)
         def total_protein(m): 
@@ -67,7 +67,7 @@ def optimize_foods():
                 Constraint(expr=model.x[i] <= standardized_foods[i]["Grams"])
             )
 
-        # Set objective based on goal
+        # Set obj based on goal
         if goal == "maximize_protein":
             model.obj = Objective(expr=model.total_protein, sense=maximize)
         elif goal == "minimize_calories":
@@ -81,14 +81,14 @@ def optimize_foods():
         else:
             return jsonify({"error": f"Unknown goal: {goal}"}), 400
 
-        # Solve the model
+        # Solve 
         solver = SolverFactory('glpk', executable='/opt/homebrew/bin/glpsol')
         results = solver.solve(model)
 
         if results.solver.status != SolverStatus.ok:
             return jsonify({"error": f"Solver error: {results.solver.status}"}), 500
 
-        # Collect results
+        # results
         result = []
         servings = {}
         macros = {
@@ -102,7 +102,7 @@ def optimize_foods():
 
         for i in model.FOODS:
             grams = value(model.x[i])
-            if grams and grams > 0.01:  # Only include meaningful amounts
+            if grams and grams > 0.01:  
                 food = standardized_foods[i]
                 item = food.copy()
                 item["Optimized (g)"] = round(grams, 2)
@@ -111,7 +111,7 @@ def optimize_foods():
                 # Add to servings dictionary for the response
                 servings[food["name"]] = round(grams, 2)
                 
-                # Calculate contribution to total macros
+                # Calculate o total macros
                 ratio = grams / food["Grams"]
                 for macro in macros:
                     macros[macro] += food[macro] * ratio
@@ -134,7 +134,7 @@ def optimize_foods():
 
 @app.route('/optimize-recipe', methods=['POST'])
 def optimize_recipe():
-    """API endpoint to find the optimal recipe"""
+    """Endpoint to find the optimal recipe"""
     try:
         data = request.json
         recipes = data.get("recipes", [])

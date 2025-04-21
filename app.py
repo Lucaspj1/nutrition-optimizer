@@ -11,18 +11,18 @@ import pandas as pd
 import traceback
 
 st.set_page_config(page_title="Nutrition Optimizer", layout="wide")
-st.title("🍽️ Nutrition Optimizer")
+st.title("Nutrition Optimizer")
 st.write("Search for foods, specify the amount you have, and optimize your diet!")
 
-# Session initialization
+# Start 
 if "selected_foods" not in st.session_state:
     st.session_state.selected_foods = []
 
-# Sidebar navigation
+# Sidebar n
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to", ["Food Optimizer", "Available Recipes"])
 
-# Debug option
+# Debug mode
 debug_mode = st.sidebar.checkbox("Debug Mode", value=False)
 
 if page == "Food Optimizer":
@@ -31,20 +31,20 @@ if page == "Food Optimizer":
     with col1:
         st.write("### Add Foods")
     with col2:
-        if st.button("🗑️ Clear All Foods"):
+        if st.button("Clear Foods"):
             st.session_state.selected_foods = []
             st.rerun()
 
     # Food search and selection
-    food_input = st.text_input("Search for a food (Foundation Foods only)")
+    food_input = st.text_input("Search for a Foundation food ")
     suggestions = search_usda_suggestions(food_input) if food_input else []
 
     if suggestions:
         selected = st.selectbox("Suggestions", suggestions, format_func=lambda x: x["name"])
-        grams = st.number_input("How many grams of this food do you have?", min_value=1, value=100)
+        grams = st.number_input("How many grams do you have?", min_value=1, value=100)
         
         if st.button("Add Food"):
-            with st.spinner("Fetching nutrition data..."):
+            with st.spinner("Finding nutrition data..."):
                 nutrition = get_nutrition(selected["fdcId"])
                 if nutrition:
                     nutrition["Grams"] = grams
@@ -52,7 +52,7 @@ if page == "Food Optimizer":
                     st.success(f"Added {nutrition['name']} to your foods!")
                     st.rerun()
                 else:
-                    st.error("Could not fetch nutrition data for this food.")
+                    st.error("Could not find nutrition data for this food.")
 
     # Display selected foods
     if st.session_state.selected_foods:
@@ -76,7 +76,7 @@ if page == "Food Optimizer":
         df = pd.DataFrame(display_foods)
         st.dataframe(df)
         
-        # Show base food names in debug mode
+        # Show food names in debug mode
         if debug_mode:
             st.write("### Base Food Names (for matching)")
             base_names = []
@@ -87,7 +87,7 @@ if page == "Food Optimizer":
                 })
             st.dataframe(pd.DataFrame(base_names))
         
-        # Allow removing foods
+        # removing foods
         if st.button("Remove Last Food"):
             if st.session_state.selected_foods:
                 removed = st.session_state.selected_foods.pop()
@@ -101,7 +101,7 @@ if page == "Food Optimizer":
         "minimize_cholesterol", "maximize_fiber"
     ])
 
-    # Added calorie constraint inputs before optimization
+    # calorie constraint inputs before optimization
     col1, col2 = st.columns(2)
     with col1:
         min_cal = st.number_input("Minimum calories", min_value=0, value=0)
@@ -147,13 +147,13 @@ if page == "Food Optimizer":
                             }]
                             st.dataframe(pd.DataFrame(macro_data))
                         else:
-                            st.error("Optimization failed. Check your constraints.")
+                            st.error("Optimization failed.")
                     except Exception as e:
                         st.error(f"An error occurred: {str(e)}")
                         if debug_mode:
                             st.code(traceback.format_exc())
             else:
-                st.warning("Please add some foods first.")
+                st.warning("Please add some more foods.")
 
     # Recipe optimization
     with col2:
@@ -216,7 +216,7 @@ if page == "Food Optimizer":
                                     }]
                                     st.dataframe(pd.DataFrame(macro_data))
                                 else:
-                                    st.error("Could not find optimal recipe with given constraints.")
+                                    st.error("Could not find optimal recipe. ")
                             else:
                                 st.warning("Could not calculate recipe macros. Try adding more ingredients.")
                         else:
@@ -230,7 +230,7 @@ if page == "Food Optimizer":
 
 elif page == "Available Recipes":
     st.write("## Available Recipes")
-    st.write("Browse all available recipes to see what you can make with your ingredients.")
+    st.write("All available recipes to see what you can make with your ingredients.")
     
     # Create tabs for different recipe categories
     categories = {
@@ -246,7 +246,7 @@ elif page == "Available Recipes":
     # Get recipes for the selected category
     recipe_list = categories[selected_category]
     
-    # Display recipes in a grid (3 columns)
+    # Display recipes 
     cols = st.columns(3)
     for i, recipe_name in enumerate(recipe_list):
         col_idx = i % 3
@@ -262,8 +262,7 @@ elif page == "Available Recipes":
                     })
                 st.dataframe(pd.DataFrame(ingredient_data), hide_index=True)
                 
-                # Calculate approximate macros (assuming standard values for ingredients)
-                # This is a simplified calculation - the actual optimizer is more accurate
+                
                 st.write("#### Estimated Nutrition (approximate)")
                 
                 # Sample nutrition values per 100g for common ingredients
@@ -280,7 +279,7 @@ elif page == "Available Recipes":
                     "Oil": {"protein": 0, "fat": 100, "carbs": 0, "calories": 884}
                 }
                 
-                # Map ingredients to categories (simplified)
+                # Map ingredients to categories 
                 def categorize_ingredient(name):
                     name_lower = name.lower()
                     if any(meat in name_lower for meat in ["chicken", "turkey", "beef", "pork"]):
@@ -302,9 +301,8 @@ elif page == "Available Recipes":
                     elif "oil" in name_lower:
                         return "Oil"
                     else:
-                        return "Vegetables"  # Default
+                        return "Vegetables" 
                 
-                # Calculate approximate nutrition
                 protein = 0
                 fat = 0
                 carbs = 0
@@ -346,7 +344,7 @@ elif page == "Available Recipes":
                 
                 st.write("**Tags:** " + ", ".join(tags) if tags else "**Tags:** None")
 
-# Add information section
+# information sidebar
 st.sidebar.markdown("""
 ## About This App
 This app helps you optimize your nutrition based on the foods you have available.
@@ -355,13 +353,4 @@ This app helps you optimize your nutrition based on the foods you have available
 1. Search for foods in the USDA database
 2. Add them to your selection
 3. Set your optimization goal and constraints
-4. Click "Optimize Foods" or "Optimize Recipes"
-
-### Ingredient Matching:
-The app intelligently matches similar ingredients. For example, if a recipe calls for "tomatoes, cherry" and you have "tomatoes, roma", the app will recognize them as compatible.
-
-### Troubleshooting:
-- If you don't see any search results, try general terms like "chicken", "rice", etc.
-- If optimization fails, try relaxing your calorie constraints
-- If recipes aren't showing up, try adding more varied ingredients
-""")
+4. Click "Optimize Foods" or "Optimize Recipes""")
